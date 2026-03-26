@@ -518,3 +518,79 @@ function batchUpdateUCRecords(payload) {
     lock.releaseLock();
   }
 }
+
+// ==========================================
+// ฟังก์ชันอัปเดตข้อมูลจากไฟล์ Excel แบบเหมาเข่ง
+// ==========================================
+function batchUpdateFromExcel(updates) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000); // ป้องกันคนบันทึกพร้อมกัน
+  
+  try {
+    const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const sheet = ss.getSheetByName('m_uc_budget');
+    if (!sheet) throw new Error('ไม่พบชีต m_uc_budget');
+
+    const data = sheet.getDataRange().getValues();
+    const headers = data[0];
+
+    // สร้าง Index ของหัวคอลัมน์เพื่อความรวดเร็ว
+    const hIdx = {};
+    headers.forEach((h, i) => hIdx[h.trim()] = i);
+
+    if (hIdx['รหัสรายการ'] === undefined) throw new Error('ไม่พบคอลัมน์ "รหัสรายการ" ในฐานข้อมูล');
+
+    // แปลงข้อมูลที่ส่งมาให้อยู่ในรูป Object Map (อ้างอิงด้วย ID) เพื่อให้ค้นหาได้ทันที
+    const updateMap = {};
+    updates.forEach(u => updateMap[u.id] = u);
+
+    let matchCount = 0;
+    let isModified = false;
+
+    // วนลูปข้อมูลในชีต (เริ่มจากบรรทัดที่ 2 คือ index 1)
+    for (let r = 1; r < data.length; r++) {
+      const rowId = String(data[r][hIdx['รหัสรายการ']]).trim();
+      
+      // ถ้ารหัสตรงกับข้อมูลใน Excel ที่ส่งมา
+      if (updateMap[rowId]) {
+        const u = updateMap[rowId];
+        
+        // อัปเดตข้อมูลทับลงไป (เช็คก่อนว่ามีคอลัมน์นั้นในระบบไหม)
+        if(hIdx['ปีงบประมาณ'] !== undefined && u.year !== '') data[r][hIdx['ปีงบประมาณ']] = u.year;
+        if(hIdx['หน่วยบริการแม่ข่าย'] !== undefined && u.mother !== '') data[r][hIdx['หน่วยบริการแม่ข่าย']] = u.mother;
+        if(hIdx['หน่วยบริการลูกข่าย'] !== undefined && u.child !== '') data[r][hIdx['หน่วยบริการลูกข่าย']] = u.child;
+        if(hIdx['สังกัด'] !== undefined && u.aff !== '') data[r][hIdx['สังกัด']] = u.aff;
+        if(hIdx['วงเงิน'] !== undefined && u.fund !== '') data[r][hIdx['วงเงิน']] = u.fund;
+        if(hIdx['ประเภท'] !== undefined && u.type !== '') data[r][hIdx['ประเภท']] = u.type;
+        if(hIdx['ประเภทครุภัณฑ์'] !== undefined && u.subType !== '') data[r][hIdx['ประเภทครุภัณฑ์']] = u.subType;
+        if(hIdx['รายการ'] !== undefined && u.itemName !== '') data[r][hIdx['รายการ']] = u.itemName;
+        if(hIdx['จำนวน'] !== undefined && u.qty !== '') data[r][hIdx['จำนวน']] = u.qty;
+        
+        if(hIdx['งบค่าเสื่อมUC'] !== undefined && u.budgetUC !== '') data[r][hIdx['งบค่าเสื่อมUC']] = u.budgetUC;
+        if(hIdx['สมทบเงินบำรุง'] !== undefined && u.contrib !== '') data[r][hIdx['สมทบเงินบำรุง']] = u.contrib;
+        if(hIdx['งบอื่นๆ'] !== undefined && u.other !== '') data[r][hIdx['งบอื่นๆ']] = u.other;
+        if(hIdx['รวมเงิน'] !== undefined && u.total !== '') data[r][hIdx['รวมเงิน']] = u.total;
+        
+        if(hIdx['สถานะการดำเนินงาน'] !== undefined && u.status !== '') data[r][hIdx['สถานะการดำเนินงาน']] = u.status;
+        if(hIdx['งบค่าเสื่อมUCเบิกจ่ายแล้ว'] !== undefined && u.spent !== '') data[r][hIdx['งบค่าเสื่อมUCเบิกจ่ายแล้ว']] = u.spent;
+        if(hIdx['งบค่าเสื่อมUCเหลือจ่าย'] !== undefined && u.balance !== '') data[r][hIdx['งบค่าเสื่อมUCเหลือจ่าย']] = u.balance;
+        if(hIdx['%UCเหลือจ่าย'] !== undefined && u.pct !== '') data[r][hIdx['%UCเหลือจ่าย']] = u.pct;
+
+        matchCount++;
+        isModified = true;
+      }
+    }
+
+    // เขียนข้อมูลทั้งหมดทับลงไปในทีเดียว (Batch Write - เร็วมาก)
+    if (isModified) {
+      sheet.getDataRange().setValues(data);
+    }
+
+    return { success: true, count: matchCount };
+
+  } catch (e) {
+    return { success: false, error: e.message };
+  } finally {
+    lock.releaseLock();
+  }
+}
