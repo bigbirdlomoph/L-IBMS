@@ -1,4 +1,11 @@
-ระบบ Dashboard งบลงทุน 2026
+L-IBMS : Loei Investment Budget Management System : ระบบบริหารจัดการงบลงทุนและงบค่าเสื่อม สสจ.เลย
+Dashboard 
+- งบลงทุน
+  |- สรุปผลการดำเนินงาน
+  |- รายงานความก้าวหน้า
+- งบค่าเสื่อม (UC)
+  |- สรุปผลการดำเนินงาน
+  |- รายงานความก้าวหน้า
 
 Dashboard
 <img width="1852" height="2848" alt="image" src="https://github.com/user-attachments/assets/635bc746-5ac6-4e92-a6e6-34077d45693b" />
