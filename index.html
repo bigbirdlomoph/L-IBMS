@@ -12,6 +12,7 @@
   <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
   <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   
   <style>
     body { font-family: 'Prompt', sans-serif; background-color: #f1f5f9; color: #334155; }
@@ -295,8 +296,8 @@
       </div>
 
       <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
-        <div class="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center"><h3 class="text-sm font-bold text-gray-800 mb-4 w-full text-center">สัดส่วนการเบิกจ่ายงบ UC (สถานะ 0-5)</h3><div class="relative w-full h-[250px]"><canvas id="ucDoughnutChart"></canvas></div></div>
-        <div class="lg:col-span-2 bg-white p-5 rounded-2xl shadow-sm border border-gray-100"><h3 class="text-sm font-bold text-gray-800 mb-4 text-center">ผลการดำเนินงาน 0-5 ขั้นตอน (แยกตามหน่วยบริการแม่ข่าย)</h3><div class="relative w-full h-[250px]"><canvas id="ucBarChart"></canvas></div></div>
+        <div class="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center"><h3 class="text-sm font-bold text-gray-800 mb-4 w-full text-center">สัดส่วนสถานะการดำเนินงาน งบค่าเสื่อมUC</h3><div class="relative w-full h-[250px]"><canvas id="ucDoughnutChart"></canvas></div></div>
+        <div class="lg:col-span-2 bg-white p-5 rounded-2xl shadow-sm border border-gray-100"><h3 class="text-sm font-bold text-gray-800 mb-4 text-center">ผลการดำเนินงานงบค่าเสื่อม ปีงบประมาณ 2569 (แยกตามหน่วยบริการแม่ข่าย)</h3><div class="relative w-full h-[250px]"><canvas id="ucBarChart"></canvas></div></div>
       </div>
 
       <div class="bg-white rounded-xl shadow-sm border border-emerald-200 overflow-hidden mb-6">
@@ -383,10 +384,22 @@
           </div>
           <div class="lg:col-span-2"><label class="label-text">ค้นหาคำศัพท์</label><input type="text" id="ucRptSearch" class="input-field" placeholder="ชื่อรายการ..."></div>
         </div>
-        <div class="flex gap-2 w-full justify-end mt-2 border-t pt-3">
-          <button onclick="resetUCReportFilters()" class="px-4 py-2 bg-gray-50 text-gray-500 text-xs font-bold rounded-lg border border-gray-200 hover:bg-gray-100 transition h-[38px] flex items-center">ล้างค่า</button>
-          <button onclick="searchUCReport()" class="px-6 py-2 bg-[#007B5E] text-white text-sm font-bold rounded-lg shadow-md hover:bg-[#00634a] transition h-[38px] flex items-center gap-2">🔍 ค้นหาข้อมูล</button>
+
+        <div class="flex gap-2 w-full justify-between items-center mt-2 border-t pt-3">
+          <div>
+            <button onclick="document.getElementById('excelUpload').click()" class="px-4 py-2 bg-emerald-600 text-white text-xs font-bold rounded-lg shadow-sm hover:bg-emerald-700 transition flex items-center gap-1.5">
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
+              อัปเดตด้วย Excel
+            </button>
+            <input type="file" id="excelUpload" accept=".xlsx, .xls" class="hidden" onchange="handleExcelUpload(event)">
+          </div>
+
+          <div class="flex gap-2">
+            <button onclick="resetUCReportFilters()" class="px-4 py-2 bg-gray-50 text-gray-500 text-xs font-bold rounded-lg border border-gray-200 hover:bg-gray-100 transition h-[38px] flex items-center">ล้างค่า</button>
+            <button onclick="searchUCReport()" class="px-6 py-2 bg-[#007B5E] text-white text-sm font-bold rounded-lg shadow-md hover:bg-[#00634a] transition h-[38px] flex items-center gap-2">🔍 ค้นหาข้อมูล</button>
+          </div>
         </div>
+
       </section>
 
       <div id="uc-batch-bar" class="bg-orange-50 border border-orange-200 p-3 rounded-lg mb-4 flex justify-between items-center hidden transition-all shadow-sm">
@@ -484,6 +497,59 @@
         <div class="p-4 bg-gray-100 flex justify-end gap-3 sticky bottom-0 border-t">
           <button onclick="closeUCBatchModal()" class="px-6 py-2 rounded-lg bg-white border font-bold text-gray-500 hover:bg-gray-50 transition">ยกเลิก</button>
           <button onclick="saveUCBatchEdit()" class="px-8 py-2 rounded-lg bg-orange-500 text-white font-bold shadow-md hover:bg-orange-600 transition">💾 บันทึกข้อมูล</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal แสดงนำเข้าข็อมูล -->
+    <div id="ucExcelPreviewModal" class="modal">
+      <div class="modal-content overflow-y-auto max-w-[95%] w-[1200px]">
+        <div class="bg-emerald-600 p-4 text-white flex justify-between items-center sticky top-0 z-10">
+          <h3 class="font-bold text-lg flex items-center gap-2">👀 เปรียบเทียบและยืนยันการอัปเดต (Excel Data Diff)</h3>
+          <button onclick="closeExcelPreviewModal()" class="text-2xl hover:text-gray-200">&times;</button>
+        </div>
+        <div class="p-4 md:p-6">
+          <div class="mb-4 bg-emerald-50 p-4 rounded-lg border border-emerald-200 flex justify-between items-center">
+            <div>
+              <p class="text-emerald-800 font-bold text-lg">พบรายการที่มีการเปลี่ยนแปลง <span id="excel-diff-count" class="text-2xl text-emerald-600 px-1">0</span> รายการ</p>
+              <p class="text-sm text-emerald-600 mt-1">ระบบคัดกรองเฉพาะรายการที่ "สถานะ" หรือ "ยอดเบิกจ่าย" ไม่ตรงกับระบบเดิม (รายการที่ไม่มีการเปลี่ยนแปลงจะถูกข้ามไป)</p>
+            </div>
+          </div>
+
+          <div class="flex justify-between items-center bg-gray-50 p-2 rounded-t-lg border border-b-0">
+            <div class="flex items-center gap-2">
+              <span class="text-xs font-semibold text-gray-500">แสดง</span>
+              <select id="excelPreviewItemsPerPage" class="text-sm border border-gray-300 rounded p-1 outline-none text-gray-700 bg-white" onchange="changeExcelPreviewItemsPerPage()">
+                <option value="10">10</option>
+                <option value="50">50</option>
+                <option value="100">100</option>
+                <option value="all">ทั้งหมด</option>
+              </select>
+            </div>
+            <div class="flex items-center gap-1 text-sm" id="excel-preview-pagination"></div>
+          </div>
+
+          <div class="bg-white border rounded-b-lg overflow-hidden shadow-sm">
+            <div class="overflow-x-auto max-h-[450px] custom-scroll">
+              <table class="w-full text-[12px] text-left">
+                <thead class="bg-gray-100 text-gray-700 sticky top-0 shadow-sm z-10">
+                  <tr>
+                    <th class="p-2 border-b text-center w-10"><input type="checkbox" id="chkAllExcel" onchange="toggleAllExcelPreview(this)" checked class="w-4 h-4 rounded cursor-pointer accent-emerald-600"></th>
+                    <th class="p-2 border-b w-32">ID / ปีงบ</th>
+                    <th class="p-2 border-b w-1/5">แม่ข่าย / ลูกข่าย</th>
+                    <th class="p-2 border-b w-auto min-w-[200px]">ชื่อรายการ</th>
+                    <th class="p-2 border-b bg-red-50 text-center w-1/5 border-l border-red-100">ข้อมูลเดิม (ในระบบ)</th>
+                    <th class="p-2 border-b bg-emerald-50 text-center w-1/5 border-l border-emerald-100">ข้อมูลใหม่ (Excel)</th>
+                  </tr>
+                </thead>
+                <tbody id="excel-preview-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+        <div class="p-4 bg-gray-100 flex justify-end gap-3 sticky bottom-0 border-t">
+          <button onclick="closeExcelPreviewModal()" class="px-6 py-2 rounded-lg bg-white border font-bold text-gray-500 hover:bg-gray-50 transition">ยกเลิก</button>
+          <button onclick="confirmExcelImport()" class="px-8 py-2 rounded-lg bg-emerald-600 text-white font-bold shadow-md hover:bg-emerald-700 transition">💾 ยืนยันการนำเข้าข้อมูลที่เลือก</button>
         </div>
       </div>
     </div>
@@ -1404,7 +1470,9 @@
             initUCDropdowns();
 
             if(!$('#page-uc-dashboard').hasClass('hidden')) renderUCDashboard();
-            if(!$('#page-uc-report').hasClass('hidden')) renderUCReportTable();
+            
+            // 💡 ไม่ให้ตารางเรนเดอร์อัตโนมัติ รอผู้ใช้กดค้นหาเพื่อลดภาระหน้าจอ
+            // if(!$('#page-uc-report').hasClass('hidden')) renderUCReportTable(); 
           }
         }).getUCBudgetData();
       }
@@ -2009,6 +2077,274 @@
                 }).getUCBudgetData();
             } else { Swal.fire('ผิดพลาด', res.error || 'ไม่สามารถบันทึกข้อมูลได้', 'error'); }
         }).withFailureHandler(err => { Swal.fire('การเชื่อมต่อขัดข้อง', String(err), 'error'); }).batchUpdateUCRecords(payload);
+    }
+
+    // ========================================================
+    // 🔥 ระบบอัปเดตข้อมูลด้วย EXCEL BATCH UPLOAD
+    // ========================================================
+    function handleExcelUpload(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      event.target.value = ''; // ล้างค่าเผื่อโหลดไฟล์เดิมซ้ำ
+
+      Swal.fire({title: 'กำลังอ่านไฟล์ Excel...', text: 'กรุณารอสักครู่', didOpen: () => Swal.showLoading()});
+
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        try {
+          const data = new Uint8Array(e.target.result);
+          const workbook = XLSX.read(data, {type: 'array'});
+          const firstSheetName = workbook.SheetNames[0]; // อ่านชีตแรกเสมอ
+          const worksheet = workbook.Sheets[firstSheetName];
+          const json = XLSX.utils.sheet_to_json(worksheet, {defval: ''}); // แปลงเป็น JSON
+
+          processExcelData(json);
+        } catch(err) {
+          Swal.fire('เกิดข้อผิดพลาด', 'ไฟล์ขัดข้องหรือไม่ใช่รูปแบบ Excel', 'error');
+        }
+      };
+      reader.readAsArrayBuffer(file);
+    }
+
+    // ตัวแปรสำหรับแบ่งหน้าตาราง Excel Preview
+    let excelPreviewCurrentPage = 1;
+    let excelPreviewItemsPerPage = '10';
+    let excelDiffData = [];
+
+    function processExcelData(json) {
+      if(!json || json.length === 0) {
+        Swal.fire('ข้อผิดพลาด', 'ไฟล์ Excel ของคุณไม่มีข้อมูล', 'warning');
+        return;
+      }
+
+      excelDiffData = []; // ล้างค่าเก่า
+      
+      const getVal = (row, keys) => {
+         for(let k of keys) { if(row[k] !== undefined) return String(row[k]).trim(); }
+         return '';
+      };
+
+      json.forEach(row => {
+        const id = getVal(row, ['ID', 'รหัสรายการ']);
+        if(!id) return;
+
+        const exists = appData.uc.find(d => d.id === id);
+        if(exists) {
+           let newStatus = getVal(row, ['สถานะการดำเนินงาน']);
+           let newSpentStr = getVal(row, ['งบค่าเสื่อมUCเบิกจ่ายแล้ว', 'เบิกจ่ายแล้ว']);
+           
+           let newSpentNum = parseFloat(newSpentStr.replace(/,/g, '')) || 0;
+           let oldSpentNum = parseFloat(String(exists.spentUC || 0).replace(/,/g, '')) || 0;
+           
+           let oldStatusRaw = String(exists.statusRaw || '0');
+           let newStatusRaw = newStatus ? newStatus.split('-')[0].trim() : oldStatusRaw;
+
+           // 💡 เช็กความแตกต่าง (Diff)
+           let isStatusDiff = (oldStatusRaw !== newStatusRaw) && newStatus !== '';
+           let isSpentDiff = (oldSpentNum !== newSpentNum) && newSpentStr !== '';
+
+           // ถ้ารายการนี้มีการเปลี่ยนแปลง ค่อยดึงมาโชว์ในตารางให้ยืนยัน
+           if(isStatusDiff || isSpentDiff) {
+             excelDiffData.push({
+               id: id,
+               year: exists.year,
+               mother: exists.motherHosp !== '-' ? exists.motherHosp : exists.hospName,
+               child: exists.hospName,
+               itemName: exists.itemName !== '-' ? exists.itemName : exists.name,
+               oldStatus: exists.statusText,
+               newStatus: newStatus || exists.statusText,
+               oldSpent: oldSpentNum,
+               newSpent: newSpentNum,
+               isStatusDiff: isStatusDiff,
+               isSpentDiff: isSpentDiff,
+               checked: true, // ค่าเริ่มต้นให้ติ๊กเลือกอัปเดตไว้
+               rawData: {
+                 id: id,
+                 year: getVal(row, ['ปีงบประมาณ']),
+                 mother: getVal(row, ['หน่วยบริการแม่', 'หน่วยบริการแม่ข่าย']),
+                 child: getVal(row, ['หน่วยบริการลูกข่าย']),
+                 aff: getVal(row, ['สังกัด']),
+                 fund: getVal(row, ['วงเงิน']),
+                 type: getVal(row, ['ประเภท']),
+                 subType: getVal(row, ['ประเภทครุภัณฑ์']),
+                 itemName: getVal(row, ['รายการ']),
+                 qty: getVal(row, ['จำนวน']),
+                 budgetUC: getVal(row, ['งบค่าเสื่อมUC']),
+                 contrib: getVal(row, ['สมทบเงินบำรุง']),
+                 other: getVal(row, ['งบอื่นๆ']),
+                 total: getVal(row, ['รวมเงิน']),
+                 status: newStatus,
+                 spent: newSpentStr,
+                 balance: getVal(row, ['งบค่าเสื่อมUCเหลือจ่าย', 'เหลือจ่าย']),
+                 pct: getVal(row, ['%UCเหลือจ่าย'])
+               }
+             });
+           }
+        }
+      });
+
+      Swal.close();
+
+      // ถ้ายกไฟล์เดิมมาอัป หรือไม่มีอะไรเปลี่ยน
+      if(excelDiffData.length === 0) {
+         Swal.fire('ไม่มีการเปลี่ยนแปลง', 'ข้อมูลในไฟล์ Excel ที่อัปโหลดมา สถานะตรงกับในระบบปัจจุบันทุกประการ ไม่มีรายการใดต้องอัปเดตครับ', 'info');
+         return;
+      }
+
+      excelPreviewCurrentPage = 1;
+      renderExcelPreviewTable();
+      $('#ucExcelPreviewModal').fadeIn(200);
+    }
+    
+    function renderExcelPreviewTable() {
+        $('#excel-diff-count').text(excelDiffData.length);
+        
+        let totalItems = excelDiffData.length;
+        let totalPages = 1;
+        let displayData = excelDiffData;
+        
+        if(excelPreviewItemsPerPage !== 'all') {
+            const limit = parseInt(excelPreviewItemsPerPage, 10);
+            totalPages = Math.ceil(totalItems / limit) || 1;
+            if(excelPreviewCurrentPage > totalPages) excelPreviewCurrentPage = totalPages;
+            const startIdx = (excelPreviewCurrentPage - 1) * limit;
+            displayData = displayData.slice(startIdx, startIdx + limit);
+        }
+        
+        let html = '';
+        displayData.forEach((d) => {
+            // หา index จริงใน Array หลัก เพื่อให้ตอนติ๊ก checkbox อ้างอิงถูกตัว
+            let globalIdx = excelDiffData.indexOf(d);
+            
+            let oldStHtml = `<div class="text-[11px] text-gray-500 mb-1">สถานะ: <span class="font-bold text-gray-700">${d.oldStatus}</span></div>`;
+            let oldSpHtml = `<div class="text-[11px] text-gray-500">เบิกจ่าย: <span class="font-bold text-gray-700">${d.oldSpent.toLocaleString(undefined, {minimumFractionDigits:2})}</span></div>`;
+            
+            // ไฮไลต์พื้นหลังสีเขียว/ข้อความสีเขียว ถ้ามีการเปลี่ยนแปลง
+            let newStClass = d.isStatusDiff ? 'text-emerald-700 bg-emerald-100 px-1 rounded inline-block' : 'text-gray-700';
+            let newSpClass = d.isSpentDiff ? 'text-emerald-700 bg-emerald-100 px-1 rounded inline-block' : 'text-gray-700';
+            
+            let newStHtml = `<div class="text-[11px] text-gray-500 mb-1">สถานะ: <span class="font-bold ${newStClass}">${d.newStatus}</span></div>`;
+            let newSpHtml = `<div class="text-[11px] text-gray-500">เบิกจ่าย: <span class="font-bold ${newSpClass}">${d.newSpent.toLocaleString(undefined, {minimumFractionDigits:2})}</span></div>`;
+
+            html += `<tr class="border-b hover:bg-gray-50 transition-colors">
+                <td class="p-2 text-center">
+                    <input type="checkbox" class="excel-chk w-4 h-4 cursor-pointer rounded accent-emerald-600" value="${globalIdx}" ${d.checked ? 'checked' : ''} onchange="updateExcelCheck(${globalIdx}, this.checked)">
+                </td>
+                <td class="p-2 font-mono text-[10px] text-gray-500"><b class="text-gray-700 text-[11px]">${d.id}</b><br>ปี ${d.year}</td>
+                <td class="p-2 text-[11px] leading-tight"><b class="text-gray-700">${d.mother}</b><br><span class="text-blue-600">ลูก: ${d.child}</span></td>
+                <td class="p-2 text-[11px] font-medium text-[#007B5E]">${d.itemName}</td>
+                <td class="p-2 bg-red-50/40 border-l border-red-100 text-left">${oldStHtml}${oldSpHtml}</td>
+                <td class="p-2 bg-emerald-50/40 border-l border-emerald-100 text-left">${newStHtml}${newSpHtml}</td>
+            </tr>`;
+        });
+        
+        $('#excel-preview-tbody').html(html);
+        
+        // แถบแบ่งหน้า
+        let pageHtml = '';
+        if (excelPreviewItemsPerPage !== 'all' && totalPages > 1) {
+            pageHtml += `<button onclick="changeExcelPage(${excelPreviewCurrentPage - 1})" class="px-2 py-1 border rounded hover:bg-gray-100 bg-white" ${excelPreviewCurrentPage === 1 ? 'disabled' : ''}>&laquo;</button>`;
+            let startPage = Math.max(1, excelPreviewCurrentPage - 2); 
+            let endPage = Math.min(totalPages, startPage + 4);
+            if (endPage - startPage < 4) startPage = Math.max(1, endPage - 4);
+            for (let i = startPage; i <= endPage; i++) {
+                pageHtml += `<button onclick="changeExcelPage(${i})" class="px-2 py-1 border rounded ${i===excelPreviewCurrentPage ? 'bg-emerald-600 text-white font-bold' : 'hover:bg-gray-100 bg-white'}">${i}</button>`;
+            }
+            pageHtml += `<button onclick="changeExcelPage(${excelPreviewCurrentPage + 1})" class="px-2 py-1 border rounded hover:bg-gray-100 bg-white" ${excelPreviewCurrentPage === totalPages ? 'disabled' : ''}>&raquo;</button>`;
+            pageHtml += `<span class="ml-2 text-xs text-gray-500">หน้า ${excelPreviewCurrentPage}/${totalPages}</span>`;
+        }
+        $('#excel-preview-pagination').html(pageHtml);
+        
+        // อัปเดต Checkbox ด้านบนสุดตามแถวที่กำลังแสดง
+        let allChecked = $('.excel-chk').length > 0 && $('.excel-chk:not(:checked)').length === 0;
+        $('#chkAllExcel').prop('checked', allChecked);
+    }
+    
+    function changeExcelPage(p) { excelPreviewCurrentPage = p; renderExcelPreviewTable(); }
+    function changeExcelPreviewItemsPerPage() { excelPreviewItemsPerPage = $('#excelPreviewItemsPerPage').val(); excelPreviewCurrentPage = 1; renderExcelPreviewTable(); }
+    
+    // ติ๊กเลือก/ไม่เลือก ทีละรายการ
+    function updateExcelCheck(idx, isChecked) {
+        excelDiffData[idx].checked = isChecked;
+        let allChecked = $('.excel-chk').length > 0 && $('.excel-chk:not(:checked)').length === 0;
+        $('#chkAllExcel').prop('checked', allChecked);
+    }
+    
+    // ติ๊กเลือก/ไม่เลือก ทั้งหน้า
+    function toggleAllExcelPreview(el) {
+        let isChecked = $(el).prop('checked');
+        $('.excel-chk').prop('checked', isChecked);
+        $('.excel-chk').each(function() {
+            let idx = $(this).val();
+            excelDiffData[idx].checked = isChecked;
+        });
+    }
+
+    function closeExcelPreviewModal() {
+        $('#ucExcelPreviewModal').fadeOut(200);
+        $('#excelUpload').val(''); // เคลียร์ไฟล์
+    }
+
+    function confirmExcelImport() {
+        // 💡 กรองเอาเฉพาะข้อมูลที่ถูก "ติ๊กเลือก (checked)" เพื่อส่งไปอัปเดต
+        let selectedUpdates = excelDiffData.filter(d => d.checked).map(d => d.rawData);
+        
+        if(selectedUpdates.length === 0) {
+            Swal.fire('ไม่มีรายการที่เลือก', 'กรุณาติ๊กเลือกอย่างน้อย 1 รายการเพื่อดำเนินการอัปเดต', 'warning');
+            return;
+        }
+        
+        closeExcelPreviewModal();
+        sendBatchUpdateToBackend(selectedUpdates);
+    }
+
+    function sendBatchUpdateToBackend(updates) {
+       // ... (โค้ดเดิมด้านในปล่อยไว้เหมือนเดิมครับ) ...
+       Swal.fire({title: 'กำลังอัปเดตฐานข้อมูล...', html: 'กรุณารอสักครู่ ห้ามปิดหน้าต่างนี้', didOpen: () => Swal.showLoading(), allowOutsideClick: false});
+       
+       google.script.run.withSuccessHandler(res => {
+          if(res && res.success) {
+             Swal.fire('อัปเดตสำเร็จ!', `นำเข้าและบันทึกข้อมูลแล้ว ${res.count} รายการ`, 'success');
+             
+             google.script.run.withSuccessHandler(r => {
+                if(r && r.success) {
+                    appData.uc = r.data || [];
+                    renderUCReportTable();
+                    if(!$('#page-uc-dashboard').hasClass('hidden')) renderUCDashboard();
+                }
+             }).getUCBudgetData();
+
+          } else {
+             Swal.fire('ผิดพลาด', res.error, 'error');
+          }
+       }).withFailureHandler(err => {
+          Swal.fire('การเชื่อมต่อขัดข้อง', String(err), 'error');
+       }).batchUpdateFromExcel(updates);
+    }
+
+    function sendBatchUpdateToBackend(updates) {
+       Swal.fire({title: 'กำลังอัปเดตฐานข้อมูล...', html: 'กรุณารอสักครู่ ห้ามปิดหน้าต่างนี้', didOpen: () => Swal.showLoading(), allowOutsideClick: false});
+       
+       google.script.run.withSuccessHandler(res => {
+          if(res && res.success) {
+             Swal.fire('อัปเดตสำเร็จ!', `นำเข้าและบันทึกข้อมูลแล้ว ${res.count} รายการ`, 'success');
+             
+             // สั่งให้ระบบดึงข้อมูลใหม่มา Refresh หน้าจอทันที
+             google.script.run.withSuccessHandler(r => {
+                if(r && r.success) {
+                    appData.uc = r.data || [];
+                    renderUCReportTable();
+                    if(!$('#page-uc-dashboard').hasClass('hidden')) renderUCDashboard();
+                }
+             }).getUCBudgetData();
+
+          } else {
+             Swal.fire('ผิดพลาด', res.error, 'error');
+          }
+       }).withFailureHandler(err => {
+          Swal.fire('การเชื่อมต่อขัดข้อง', String(err), 'error');
+       }).batchUpdateFromExcel(updates);
     }
   </script>
 </body>
