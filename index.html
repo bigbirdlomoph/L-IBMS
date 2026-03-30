@@ -315,7 +315,7 @@
                 <th class="p-1 border border-emerald-600">รายการ</th><th class="p-1 border border-emerald-600">ร้อยละ</th><th class="p-1 border border-emerald-600">รายการ</th><th class="p-1 border border-emerald-600">ร้อยละ</th>
                 <th class="p-1 border border-emerald-600">รายการ</th><th class="p-1 border border-emerald-600">ร้อยละ</th><th class="p-1 border border-emerald-600">รายการ</th><th class="p-1 border border-emerald-600">ร้อยละ</th>
                 <th class="p-1 border border-emerald-600">รายการ</th><th class="p-1 border border-emerald-600">ร้อยละ</th><th class="p-1 border border-emerald-600">รายการ</th><th class="p-1 border border-emerald-600">ร้อยละ</th>
-                <th class="p-1 border border-emerald-600">งบที่ใช้ (เบิก)</th><th class="p-1 border border-emerald-600">เงินเหลือจ่าย</th><th class="p-1 border border-emerald-600">%เบิกจ่าย</th>
+                <th class="p-1 border border-emerald-600">งบที่ใช้ (เบิก)</th><th class="p-1 border border-emerald-600">เงินเหลือจ่าย</th><th class="p-1 border border-emerald-600">%ใช้จ่าย</th>
               </tr>
             </thead>
             <tbody id="uc-dash-tbody"></tbody><tfoot id="uc-dash-tfoot" class="bg-gray-100 font-bold text-gray-800"></tfoot>
@@ -573,6 +573,19 @@
   </main>
 
   <script>
+    // ... โค้ดด้านบน ...
+    var fallbackTimer = setTimeout(() => { showErrorLoader('โหลดช้ากว่าปกติ', 'ระบบขัดข้องบางประการ คลิกเพื่อข้ามเข้าสู่ระบบ'); }, 15000); 
+
+    // 💡 1. ประกาศตัวแปร Version ไว้ตรงนี้ (รอบหน้ามาแก้แค่ตัวเลขตรงนี้ครับ)
+    const APP_VERSION = "690330";
+
+    var appData = { dashboard: { eq: [], bd: [] }, report: { eq: [], bd: [] }, search: null, servicePlan: [], progress: null, uc: [], options: {} };
+    // ... ตัวแปรอื่นๆ ...
+
+    function bootApp() {
+        // ... โค้ดดึงข้อมูล ...
+    }
+
     function showErrorLoader(title, msg) {
       clearTimeout(fallbackTimer);
       if(document.getElementById('spinner-icon')) document.getElementById('spinner-icon').style.display = 'none';
@@ -615,7 +628,11 @@
 
     function loadDashboardData(data) {
       appData.dashboard = data;
-      if(document.getElementById('nav-version')) document.getElementById('nav-version').innerText = 'v' + data.version;
+      
+      // 💡 2. นำตัวแปร APP_VERSION มาแสดงผลใต้โลโก้
+      if(document.getElementById('nav-version')) {
+        document.getElementById('nav-version').innerText = 'version : ' + APP_VERSION;
+      }
       
       const yrOpts = '<option value="All">ทุกปีงบประมาณ</option>' + (data.years || []).map(y => `<option value="${y}">${y}</option>`).join('');
       const ampOpts = '<option value="All">ทุกอำเภอ</option>' + (data.amphoes || []).map(a => `<option value="${a}">${a}</option>`).join('');
@@ -1478,252 +1495,302 @@
       }
     }, 2000);
 
-    function renderUCDashboard() {
-      if(!appData.uc || appData.uc.length === 0) return;
-      const fY = $('#ucDashYear').val();
-      const fFund = $('#ucDashFundType').val();
-      const fAff = $('#ucDashAffiliation').val();
+    // ==========================================
+    // 💡 UC DASHBOARD SORTING LOGIC
+    // ==========================================
+    let ucDashSortCol = 'default'; 
+    let ucDashSortAsc = true;
+    const hospCustomOrder = ['10705', '11030', '11031', '11032', '11033', '11034', '11035', '11036', '11037', '11038', '11039', '14133', '11447', '28861'];
 
-      const filtered = appData.uc.filter(d => 
-         (fY === 'All' || d.year === fY) &&
-         (fFund === 'All' || d.fundType === fFund) &&
-         (fAff === 'All' || (d.affiliation||'').includes(fAff) || (fAff==='สป.สธ.' && (d.affiliation||'')===''))
-      );
-
-      let totalBudget = 0, totalSpent = 0, totalBalance = 0;
-      let statusBudget = { '0':0, '1':0, '2':0, '3':0, '4':0, '5':0 };
-      let grouped = {}, groupedMOPH = {}, groupedPAO = {};
-
-      filtered.forEach(d => {
-        let amt = Number(d.budgetUC || 0); 
-        let spnt = Number(d.spentUC || 0); 
-        let st = String(d.statusRaw || '0'); 
-        let mName = (d.motherHosp && d.motherHosp !== '-') ? d.motherHosp : d.hospName;
-        let aff = String(d.affiliation || '');
-
-        totalBudget += amt; 
-        totalSpent += spnt;
-        if(statusBudget[st] !== undefined) statusBudget[st] += amt;
-
-        let balance = amt - spnt; 
-        totalBalance += balance;
-
-        const addToGroup = (grp) => {
-            if(!grp[mName]) grp[mName] = { name: mName, budget: 0, items: 0, s0:0, s1:0, s2:0, s3:0, s4:0, s5:0, spent: 0, balance: 0 };
-            grp[mName].budget += amt; 
-            grp[mName].items++; 
-            grp[mName]['s'+st]++;
-            grp[mName].spent += spnt; 
-            grp[mName].balance += balance;
-        };
-
-        addToGroup(grouped);
-        if(aff.includes('สป.สธ.') || aff === '') addToGroup(groupedMOPH);
-        if(aff.includes('อบจ.')) addToGroup(groupedPAO);
-      });
-
-      $('#uc-card-total').text(totalBudget.toLocaleString(undefined, {minimumFractionDigits: 2}));
-      $('#uc-card-spent').text(totalSpent.toLocaleString(undefined, {minimumFractionDigits: 2}));
-      $('#uc-card-balance').text(totalBalance.toLocaleString(undefined, {minimumFractionDigits: 2}));
-      
-      let pctSpent = totalBudget > 0 ? ((totalSpent / totalBudget) * 100).toFixed(1) : 0;
-      $('#uc-card-pct').text(pctSpent + '% เบิกจ่ายแล้ว').removeClass('bg-orange-100 text-orange-800').addClass('bg-blue-100 text-blue-800');
-
-      let html = ''; let sum = { items:0, s0:0, s1:0, s2:0, s3:0, s4:0, s5:0, spent:0, balance:0, budget:0 };
-      const getPct = (val, total) => total > 0 ? ((val/total)*100).toFixed(2) : '0.00';
-
-      Object.values(grouped).sort((a,b) => b.budget - a.budget).forEach(r => {
-        sum.items += r.items; sum.budget += r.budget; sum.spent += r.spent; sum.balance += r.balance;
-        for(let i=0; i<=5; i++) sum[`s${i}`] += r[`s${i}`];
-
-        html += `<tr class="border-b hover:bg-gray-50 text-[11px] text-gray-700">
-          <td class="p-2 font-bold text-[#007B5E] text-left">${r.name}</td>
-          <td class="p-2 text-right">${r.budget.toLocaleString(undefined, {minimumFractionDigits:2})}</td>
-          <td class="p-2 text-center font-bold">${r.items}</td>
-          <td class="p-2 text-center">${r.s0}</td><td class="p-2 text-center text-gray-400">${getPct(r.s0, r.items)}</td>
-          <td class="p-2 text-center">${r.s1}</td><td class="p-2 text-center text-gray-400">${getPct(r.s1, r.items)}</td>
-          <td class="p-2 text-center">${r.s2}</td><td class="p-2 text-center text-gray-400">${getPct(r.s2, r.items)}</td>
-          <td class="p-2 text-center">${r.s3}</td><td class="p-2 text-center text-gray-400">${getPct(r.s3, r.items)}</td>
-          <td class="p-2 text-center">${r.s4}</td><td class="p-2 text-center text-gray-400">${getPct(r.s4, r.items)}</td>
-          <td class="p-2 text-center font-bold text-green-600">${r.s5}</td><td class="p-2 text-center text-gray-400">${getPct(r.s5, r.items)}</td>
-          <td class="p-2 text-right">${r.spent.toLocaleString(undefined, {minimumFractionDigits:2})}</td>
-          <td class="p-2 text-right">${r.balance.toLocaleString(undefined, {minimumFractionDigits:2})}</td>
-          <td class="p-2 text-center text-blue-600 font-bold">${getPct(r.spent, r.budget)}%</td>
-        </tr>`;
-      });
-      $('#uc-dash-tbody').html(html || '<tr><td colspan="18" class="text-center p-4">ไม่มีข้อมูล</td></tr>');
-
-      let footHtml = `<tr>
-        <td class="p-2 text-center">รวมทั้งสิ้น</td><td class="p-2 text-right">${sum.budget.toLocaleString(undefined, {minimumFractionDigits:2})}</td><td class="p-2 text-center">${sum.items}</td>
-        <td class="p-2 text-center">${sum.s0}</td><td class="p-2 text-center">${getPct(sum.s0, sum.items)}</td><td class="p-2 text-center">${sum.s1}</td><td class="p-2 text-center">${getPct(sum.s1, sum.items)}</td>
-        <td class="p-2 text-center">${sum.s2}</td><td class="p-2 text-center">${getPct(sum.s2, sum.items)}</td><td class="p-2 text-center">${sum.s3}</td><td class="p-2 text-center">${getPct(sum.s3, sum.items)}</td>
-        <td class="p-2 text-center">${sum.s4}</td><td class="p-2 text-center">${getPct(sum.s4, sum.items)}</td><td class="p-2 text-center text-green-700">${sum.s5}</td><td class="p-2 text-center">${getPct(sum.s5, sum.items)}</td>
-        <td class="p-2 text-right">${sum.spent.toLocaleString(undefined, {minimumFractionDigits:2})}</td><td class="p-2 text-right">${sum.balance.toLocaleString(undefined, {minimumFractionDigits:2})}</td><td class="p-2 text-center text-blue-600 font-bold">${getPct(sum.spent, sum.budget)}%</td>
-      </tr>`;
-      $('#uc-dash-tfoot').html(footHtml);
-
-      const renderProgTable = (dataGrp, elementId, tfootId) => {
-          let tbHtml = '';
-          let sumItems = 0, sumBudget = 0, sumSpent = 0;
-
-          Object.values(dataGrp).sort((a,b) => b.budget - a.budget).forEach(r => {
-              sumItems += r.items; sumBudget += r.budget; sumSpent += r.spent;
-              let pct = r.budget > 0 ? ((r.spent / r.budget) * 100) : 0;
-              let barColor = pct >= 80 ? 'bg-emerald-500' : pct >= 40 ? 'bg-amber-400' : 'bg-red-500';
-              tbHtml += `<tr class="border-b hover:bg-gray-50"><td class="p-2 font-medium">${r.name}</td><td class="p-2 text-center">${r.items}</td><td class="p-2 text-right">${r.budget.toLocaleString(undefined, {minimumFractionDigits:2})}</td>
-                <td class="p-2"><div class="flex justify-between text-[10px] text-gray-500 mb-1"><span>เบิกแล้ว: ${r.spent.toLocaleString(undefined, {minimumFractionDigits:2})}</span><span class="font-bold text-blue-600">${pct.toFixed(1)}%</span></div>
-                <div class="w-full bg-gray-200 rounded-full h-1.5"><div class="${barColor} h-1.5 rounded-full" style="width: ${Math.min(pct, 100)}%"></div></div></td></tr>`;
-          });
-          $(elementId).html(tbHtml || '<tr><td colspan="4" class="text-center p-4 text-gray-400">ไม่มีข้อมูลในหมวดนี้</td></tr>');
-
-          if(Object.keys(dataGrp).length > 0) {
-              let totalPct = sumBudget > 0 ? ((sumSpent / sumBudget) * 100) : 0;
-              let fHtml = `<tr>
-                  <td class="p-2 text-center">รวมทั้งสิ้น</td><td class="p-2 text-center">${sumItems}</td><td class="p-2 text-right">${sumBudget.toLocaleString(undefined, {minimumFractionDigits:2})}</td>
-                  <td class="p-2"><div class="flex justify-between text-[11px] mb-1"><span>เบิกแล้ว: ${sumSpent.toLocaleString(undefined, {minimumFractionDigits:2})}</span><span class="font-bold">${totalPct.toFixed(1)}%</span></div></td>
-              </tr>`;
-              $(tfootId).html(fHtml).removeClass('hidden');
-          } else { $(tfootId).empty().addClass('hidden'); }
-      };
-      renderProgTable(groupedMOPH, '#uc-dash-moph-tbody', '#uc-dash-moph-tfoot'); 
-      renderProgTable(groupedPAO, '#uc-dash-pao-tbody', '#uc-dash-pao-tfoot');
-
-      // ==========================================
-      // 💡 อัปเดตกราฟ Doughnut และ Bar Chart 
-      // ==========================================
-      if(typeof Chart !== 'undefined') {
-          // ลงทะเบียน datalabels
-          try { Chart.register(ChartDataLabels); } catch(e){}
-
-          // 1. กราฟสัดส่วนการเบิกจ่ายงบ UC (Doughnut)
-          if(ucDoughnutChart) ucDoughnutChart.destroy();
-          ucDoughnutChart = new Chart(document.getElementById('ucDoughnutChart').getContext('2d'), { 
-            type: 'doughnut', 
-            data: { 
-              labels: ['0.ยังไม่ได้ดำเนินการ', '1.จัดทำแผนฯ', '2.ขออนุมัติฯ', '3.ทำสัญญาฯ', '4.ตรวจรับฯ', '5.เบิกจ่ายเงินแล้ว'], 
-              datasets: [{ 
-                data: [statusBudget['0'], statusBudget['1'], statusBudget['2'], statusBudget['3'], statusBudget['4'], statusBudget['5']], 
-                backgroundColor: ['#ef4444', '#fdba74', '#38bdf8', '#2563eb', '#34d399', '#15803d'] 
-              }] 
-            }, 
-            options: { 
-              responsive: true, 
-              maintainAspectRatio: false, 
-              plugins: { 
-                legend: { position: 'right', labels:{ font:{ size:10, family:'Prompt'} } },
-                title: { display: true, text: 'หน่วย: ล้านบาท (ลบ.)', font: { family: 'Prompt', size: 12, weight: 'normal' }, color: '#64748b' },
-                datalabels: {
-                  color: '#fff',
-                  font: { family: 'Prompt', weight: 'bold', size: 10 },
-                  formatter: (value, ctx) => {
-                    if (value === 0) return '';
-                    return (value / 1000000).toFixed(2) + ' ลบ.';
-                  }
-                },
-                tooltip: {
-                  callbacks: {
-                    label: function(context) {
-                      let val = context.raw || 0;
-                      return ' ' + (val / 1000000).toFixed(2) + ' ล้านบาท';
-                    }
-                  }
-                }
-              } 
-            } 
-          });
-          
-          // เตรียมข้อมูลสำหรับกราฟแท่ง
-          let sortedGrouped = Object.values(grouped).sort((a,b) => b.budget - a.budget); 
-          let labels = sortedGrouped.map(g => g.name); 
-          let s0 = sortedGrouped.map(g => g.s0); 
-          let s1 = sortedGrouped.map(g => g.s1);
-          let s2 = sortedGrouped.map(g => g.s2);
-          let s3 = sortedGrouped.map(g => g.s3);
-          let s4 = sortedGrouped.map(g => g.s4);
-          let s5 = sortedGrouped.map(g => g.s5);
-          
-          // ข้อมูลร้อยละเบิกจ่ายสำหรับกราฟ Dot
-          let pctData = sortedGrouped.map(g => g.budget > 0 ? ((g.spent / g.budget) * 100).toFixed(2) : 0);
-
-          // 2. กราฟผลการดำเนินงานแบบ Dual-Axis (Bar + Dot)
-          if(ucBarChart) ucBarChart.destroy();
-          ucBarChart = new Chart(document.getElementById('ucBarChart').getContext('2d'), { 
-            type: 'bar', 
-            data: { 
-              labels: labels, 
-              datasets: [
-                { 
-                  label: '% เบิกจ่าย', 
-                  data: pctData, 
-                  type: 'line', 
-                  yAxisID: 'y1', 
-                  borderColor: '#475569', 
-                  backgroundColor: '#475569', 
-                  showLine: false, 
-                  pointStyle: 'circle', 
-                  pointRadius: 5,
-                  pointHoverRadius: 7,
-                  datalabels: {
-                    align: 'top',
-                    anchor: 'end',
-                    color: '#1e293b',
-                    font: { family: 'Prompt', size: 9, weight: 'bold' },
-                    formatter: (val) => val + '%'
-                  }
-                },
-                { label: '0-ยังไม่ดำเนินการ', data: s0, backgroundColor: '#ef4444', yAxisID: 'y' }, 
-                { label: '1-จัดทำแผนฯ', data: s1, backgroundColor: '#fdba74', yAxisID: 'y' },
-                { label: '2-ขออนุมัติฯ', data: s2, backgroundColor: '#38bdf8', yAxisID: 'y' },
-                { label: '3-ทำสัญญาฯ', data: s3, backgroundColor: '#2563eb', yAxisID: 'y' },
-                { label: '4-ตรวจรับฯ', data: s4, backgroundColor: '#34d399', yAxisID: 'y' },
-                { label: '5-เบิกจ่ายเงินแล้ว', data: s5, backgroundColor: '#15803d', yAxisID: 'y' }
-              ] 
-            }, 
-            options: { 
-              responsive: true, 
-              maintainAspectRatio: false, 
-              interaction: {
-                mode: 'index',
-                intersect: false,
-              },
-              plugins: {
-                legend: { position: 'top', labels: { font: { family: 'Prompt', size: 10 }, usePointStyle: true, boxWidth: 8 } },
-                datalabels: {
-                  display: function(context) {
-                    // ปิดตัวเลขบนแท่ง Bar (ไม่ให้รก) โชว์เฉพาะตัวเลขบน Dot
-                    return context.dataset.type === 'line';
-                  }
-                },
-                tooltip: {
-                  callbacks: {
-                    label: function(context) {
-                      if (context.dataset.type === 'line') return ' ร้อยละเบิกจ่าย: ' + context.raw + '%';
-                      return ' ' + context.dataset.label + ': ' + context.raw + ' รายการ';
-                    }
-                  }
-                }
-              },
-              scales: { 
-                x: { stacked: true, ticks: { font: { family: 'Prompt', size: 9 } } }, 
-                y: { 
-                  type: 'linear', 
-                  position: 'left', 
-                  stacked: true, 
-                  title: { display: true, text: 'จำนวนรายการ', font: { family: 'Prompt', size: 10 } }
-                },
-                y1: {
-                  type: 'linear',
-                  position: 'right',
-                  min: 0,
-                  max: 100,
-                  title: { display: true, text: 'ร้อยละเบิกจ่าย (%)', font: { family: 'Prompt', size: 10 } },
-                  grid: { drawOnChartArea: false } // ปิดเส้น Grid ของแกนขวาไม่ให้ซ้อนกัน
-                }
-              } 
-            } 
-          });
-      }
+    function sortUCDashboard(col) {
+        if (ucDashSortCol === col) ucDashSortAsc = !ucDashSortAsc; // สลับมากไปน้อย
+        else { ucDashSortCol = col; ucDashSortAsc = true; } // เริ่มน้อยไปมาก
+        renderUCDashboard();
     }
+
+    function getUCDashSortWeight(name) {
+        let match = String(name).match(/^(\d{5})/); // จับรหัส 5 ตัวแรก
+        if (match) {
+            let idx = hospCustomOrder.indexOf(match[1]);
+            if (idx !== -1) return idx;
+        }
+        return 999; // ถ้าไม่มีในลิสต์ ให้ไปอยู่ท้ายสุด
+    }
+
+// ==========================================
+// ฟังก์ชันวาดหน้า Dashboard งบ UC (อัปเดตระบบการคิดร้อยละตามรายการ + Sorting ร้อยละสถานะ 5)
+// ==========================================
+function renderUCDashboard() {
+  if(!appData.uc || appData.uc.length === 0) return;
+  const fY = $('#ucDashYear').val();
+  const fFund = $('#ucDashFundType').val();
+  const fAff = $('#ucDashAffiliation').val();
+
+  const filtered = appData.uc.filter(d => 
+     (fY === 'All' || d.year === fY) &&
+     (fFund === 'All' || d.fundType === fFund) &&
+     (fAff === 'All' || (d.affiliation||'').includes(fAff) || (fAff==='สป.สธ.' && (d.affiliation||'')===''))
+  );
+
+  let totalBudget = 0, totalSpent = 0, totalBalance = 0;
+  let statusBudget = { '0':0, '1':0, '2':0, '3':0, '4':0, '5':0 };
+  let grouped = {}, groupedMOPH = {}, groupedPAO = {};
+  
+  // ตัวแปรสำหรับนับจำนวนรายการภาพรวม
+  let totalItemsCount = 0;
+  let totalCompletedCount = 0;
+
+  filtered.forEach(d => {
+    let amt = Number(d.budgetUC || 0); 
+    let spnt = Number(d.spentUC || 0); 
+    let st = String(d.statusRaw || '0'); 
+    let stNum = parseInt(st, 10) || 0; 
+    let mName = (d.motherHosp && d.motherHosp !== '-') ? d.motherHosp : d.hospName;
+    let aff = String(d.affiliation || '');
+
+    totalBudget += amt; 
+    totalSpent += spnt;
+    if(statusBudget[st] !== undefined) statusBudget[st] += amt;
+
+    let balance = amt - spnt; 
+    totalBalance += balance;
+    
+    // นับจำนวนรายการ
+    totalItemsCount++;
+    if (st === '5') totalCompletedCount++;
+
+    const addToGroup = (grp) => {
+        if(!grp[mName]) grp[mName] = { name: mName, budget: 0, items: 0, s0:0, s1:0, s2:0, s3:0, s4:0, s5:0, spent: 0, balance: 0, statusScore: 0 };
+        grp[mName].budget += amt; 
+        grp[mName].items++; 
+        grp[mName]['s'+st]++;
+        grp[mName].spent += spnt; 
+        grp[mName].balance += balance;
+        grp[mName].statusScore += stNum; 
+    };
+
+    addToGroup(grouped);
+    if(aff.includes('สป.สธ.') || aff === '') addToGroup(groupedMOPH);
+    if(aff.includes('อบจ.')) addToGroup(groupedPAO);
+  });
+
+  $('#uc-card-total').text(totalBudget.toLocaleString(undefined, {minimumFractionDigits: 2}));
+  $('#uc-card-spent').text(totalSpent.toLocaleString(undefined, {minimumFractionDigits: 2}));
+  $('#uc-card-balance').text(totalBalance.toLocaleString(undefined, {minimumFractionDigits: 2}));
+  
+  // ปรับ Summary Card เป็นร้อยละตามจำนวนรายการ
+  let pctSpent = totalItemsCount > 0 ? ((totalCompletedCount / totalItemsCount) * 100).toFixed(1) : 0;
+  $('#uc-card-pct').text(pctSpent + '% เบิกจ่ายแล้ว').removeClass('bg-orange-100 text-orange-800').addClass('bg-blue-100 text-blue-800');
+
+  let html = ''; let sum = { items:0, s0:0, s1:0, s2:0, s3:0, s4:0, s5:0, spent:0, balance:0, budget:0, statusScore: 0 };
+  const getPct = (val, total) => total > 0 ? ((val/total)*100).toFixed(2) : '0.00';
+
+  const getBadgeHtml = (pctNum) => {
+      if (pctNum >= 100) return `<span class="px-2 py-1 rounded-md text-[10px] font-bold bg-green-700 text-white shadow-sm">${pctNum.toFixed(2)}%</span>`;
+      if (pctNum >= 80) return `<span class="px-2 py-1 rounded-md text-[10px] font-bold bg-emerald-400 text-gray-800 shadow-sm">${pctNum.toFixed(2)}%</span>`;
+      if (pctNum >= 60) return `<span class="px-2 py-1 rounded-md text-[10px] font-bold bg-orange-500 text-white shadow-sm">${pctNum.toFixed(2)}%</span>`;
+      return `<span class="px-2 py-1 rounded-md text-[10px] font-bold bg-red-500 text-white shadow-sm">${pctNum.toFixed(2)}%</span>`;
+  };
+
+  [grouped, groupedMOPH, groupedPAO].forEach(grpObj => {
+      Object.values(grpObj).forEach(r => {
+          r.spentPct = r.budget > 0 ? (r.spent / r.budget) * 100 : 0; // %ใช้จ่ายตามตัวเงิน
+          r.itemPct = r.items > 0 ? (r.s5 / r.items) * 100 : 0; // %เบิกจ่ายตามจำนวนรายการ (สถานะ 5)
+          r.milePct = (r.items * 5) > 0 ? (r.statusScore / (r.items * 5)) * 100 : 0;
+      });
+  });
+
+  const doSort = (dataGrp, isMilestone) => {
+      let arr = Object.values(dataGrp);
+      arr.sort((a, b) => {
+          if (ucDashSortCol === 'default') {
+              let wA = getUCDashSortWeight(a.name);
+              let wB = getUCDashSortWeight(b.name);
+              if (wA !== wB) return ucDashSortAsc ? wA - wB : wB - wA;
+              return ucDashSortAsc ? a.name.localeCompare(b.name) : b.name.localeCompare(a.name);
+          } else if (ucDashSortCol === 'name') {
+              return ucDashSortAsc ? a.name.localeCompare(b.name) : b.name.localeCompare(a.name);
+          } else if (ucDashSortCol === 'pct') {
+              let pctA = isMilestone ? a.milePct : a.spentPct;
+              let pctB = isMilestone ? b.milePct : b.spentPct;
+              if (pctA !== pctB) return ucDashSortAsc ? pctA - pctB : pctB - pctA;
+              return a.name.localeCompare(b.name);
+          } else if (ucDashSortCol === 'itemPct') { // 💡 รองรับการจัดเรียงด้วยร้อยละสถานะ 5
+              let pctA = a.itemPct;
+              let pctB = b.itemPct;
+              if (pctA !== pctB) return ucDashSortAsc ? pctA - pctB : pctB - pctA;
+              return a.name.localeCompare(b.name);
+          }
+          return 0;
+      });
+      return arr;
+  };
+
+  let sortedGrouped = doSort(grouped, false);
+  sortedGrouped.forEach(r => {
+    sum.items += r.items; sum.budget += r.budget; sum.spent += r.spent; sum.balance += r.balance; sum.statusScore += r.statusScore;
+    for(let i=0; i<=5; i++) sum[`s${i}`] += r[`s${i}`];
+
+    html += `<tr class="border-b hover:bg-gray-50 text-[11px] text-gray-700">
+      <td class="p-2 font-bold text-[#007B5E] text-left">${r.name}</td>
+      <td class="p-2 text-right">${r.budget.toLocaleString(undefined, {minimumFractionDigits:2})}</td>
+      <td class="p-2 text-center font-bold">${r.items}</td>
+      <td class="p-2 text-center">${r.s0}</td><td class="p-2 text-center text-gray-800 font-semibold">${getPct(r.s0, r.items)}</td>
+      <td class="p-2 text-center">${r.s1}</td><td class="p-2 text-center text-gray-800 font-semibold">${getPct(r.s1, r.items)}</td>
+      <td class="p-2 text-center">${r.s2}</td><td class="p-2 text-center text-gray-800 font-semibold">${getPct(r.s2, r.items)}</td>
+      <td class="p-2 text-center">${r.s3}</td><td class="p-2 text-center text-gray-800 font-semibold">${getPct(r.s3, r.items)}</td>
+      <td class="p-2 text-center">${r.s4}</td><td class="p-2 text-center text-gray-800 font-semibold">${getPct(r.s4, r.items)}</td>
+      <td class="p-2 text-center font-bold text-green-600">${r.s5}</td>
+      <td class="p-2 text-center">${getBadgeHtml(r.itemPct)}</td>
+      <td class="p-2 text-right">${r.spent.toLocaleString(undefined, {minimumFractionDigits:2})}</td>
+      <td class="p-2 text-right">${r.balance.toLocaleString(undefined, {minimumFractionDigits:2})}</td>
+      <td class="p-2 text-center">${getBadgeHtml(r.spentPct)}</td>
+    </tr>`;
+  });
+  $('#uc-dash-tbody').html(html || '<tr><td colspan="18" class="text-center p-4">ไม่มีข้อมูล</td></tr>');
+
+  let totalSpentPctNum = sum.budget > 0 ? (sum.spent / sum.budget) * 100 : 0;
+  let totalItemPctNum = sum.items > 0 ? (sum.s5 / sum.items) * 100 : 0;
+
+  let footHtml = `<tr>
+    <td class="p-2 text-center">รวมทั้งสิ้น</td><td class="p-2 text-right">${sum.budget.toLocaleString(undefined, {minimumFractionDigits:2})}</td><td class="p-2 text-center">${sum.items}</td>
+    <td class="p-2 text-center">${sum.s0}</td><td class="p-2 text-center text-gray-800 font-semibold">${getPct(sum.s0, sum.items)}</td>
+    <td class="p-2 text-center">${sum.s1}</td><td class="p-2 text-center text-gray-800 font-semibold">${getPct(sum.s1, sum.items)}</td>
+    <td class="p-2 text-center">${sum.s2}</td><td class="p-2 text-center text-gray-800 font-semibold">${getPct(sum.s2, sum.items)}</td>
+    <td class="p-2 text-center">${sum.s3}</td><td class="p-2 text-center text-gray-800 font-semibold">${getPct(sum.s3, sum.items)}</td>
+    <td class="p-2 text-center">${sum.s4}</td><td class="p-2 text-center text-gray-800 font-semibold">${getPct(sum.s4, sum.items)}</td>
+    <td class="p-2 text-center text-green-700">${sum.s5}</td>
+    <td class="p-2 text-center">${getBadgeHtml(totalItemPctNum)}</td>
+    <td class="p-2 text-right">${sum.spent.toLocaleString(undefined, {minimumFractionDigits:2})}</td><td class="p-2 text-right">${sum.balance.toLocaleString(undefined, {minimumFractionDigits:2})}</td>
+    <td class="p-2 text-center">${getBadgeHtml(totalSpentPctNum)}</td>
+  </tr>`;
+  $('#uc-dash-tfoot').html(footHtml);
+
+  // การวาดตาราง MOPH และ PAO เหมือนเดิม
+  const renderProgTable = (dataGrp, elementId, tfootId) => {
+      let tbHtml = '';
+      let sumItems = 0, sumBudget = 0, sumScore = 0;
+
+      let sortedArr = doSort(dataGrp, true);
+      sortedArr.forEach(r => {
+          sumItems += r.items; sumBudget += r.budget; sumScore += r.statusScore;
+          let maxScore = r.items * 5;
+          let pct = r.milePct;
+          let barColor = pct >= 80 ? 'bg-emerald-500' : pct >= 40 ? 'bg-amber-400' : 'bg-red-500';
+          
+          tbHtml += `<tr class="border-b hover:bg-gray-50"><td class="p-2 font-medium">${r.name}</td><td class="p-2 text-center">${r.items}</td><td class="p-2 text-right">${r.budget.toLocaleString(undefined, {minimumFractionDigits:2})}</td>
+            <td class="p-2"><div class="flex justify-between text-[10px] text-gray-500 mb-1"><span>ความก้าวหน้ารวม: ${r.statusScore}/${maxScore}</span><span class="font-bold text-[#007B5E]">${pct.toFixed(1)}%</span></div>
+            <div class="w-full bg-gray-200 rounded-full h-1.5"><div class="${barColor} h-1.5 rounded-full" style="width: ${Math.min(pct, 100)}%"></div></div></td></tr>`;
+      });
+      $(elementId).html(tbHtml || '<tr><td colspan="4" class="text-center p-4 text-gray-400">ไม่มีข้อมูลในหมวดนี้</td></tr>');
+
+      if(Object.keys(dataGrp).length > 0) {
+          let totalMaxScore = sumItems * 5;
+          let totalPct = totalMaxScore > 0 ? (sumScore / totalMaxScore) * 100 : 0;
+          let fHtml = `<tr>
+              <td class="p-2 text-center">รวมทั้งสิ้น</td><td class="p-2 text-center">${sumItems}</td><td class="p-2 text-right">${sumBudget.toLocaleString(undefined, {minimumFractionDigits:2})}</td>
+              <td class="p-2"><div class="flex justify-between text-[11px] mb-1"><span>ภาพรวมความก้าวหน้า: ${sumScore}/${totalMaxScore}</span><span class="font-bold">${totalPct.toFixed(1)}%</span></div></td>
+          </tr>`;
+          $(tfootId).html(fHtml).removeClass('hidden');
+      } else { $(tfootId).empty().addClass('hidden'); }
+  };
+  renderProgTable(groupedMOPH, '#uc-dash-moph-tbody', '#uc-dash-moph-tfoot'); 
+  renderProgTable(groupedPAO, '#uc-dash-pao-tbody', '#uc-dash-pao-tfoot');
+
+  let sortIcon = ucDashSortAsc ? ' <span class="text-[10px] text-yellow-300">▲</span>' : ' <span class="text-[10px] text-yellow-300">▼</span>';
+  let nIcon = ucDashSortCol === 'name' ? sortIcon : '';
+  let pIcon = ucDashSortCol === 'pct' ? sortIcon : '';
+  let iIcon = ucDashSortCol === 'itemPct' ? sortIcon : ''; // 💡 ลูกศรสำหรับร้อยละสถานะ 5
+
+  $('#uc-dash-tbody').closest('table').find('thead tr:eq(0) th:eq(0)')
+      .addClass('cursor-pointer hover:bg-emerald-700 transition select-none').attr('onclick', "sortUCDashboard('name')").html(`ชื่อหน่วยบริการแม่ข่าย${nIcon}`);
+  $('#uc-dash-tbody').closest('table').find('thead tr:eq(1) th:last-child')
+      .addClass('cursor-pointer hover:bg-emerald-700 transition select-none').attr('onclick', "sortUCDashboard('pct')").html(`%ใช้จ่าย${pIcon}`);
+  
+  // 💡 ผูก Event เข้ากับช่อง "ร้อยละ" ในกลุ่ม "5.เบิกจ่ายเงินแล้ว" (Index 11 ของแถวที่ 2)
+  $('#uc-dash-tbody').closest('table').find('thead tr:eq(1) th:eq(11)')
+      .addClass('cursor-pointer hover:bg-emerald-700 transition select-none').attr('onclick', "sortUCDashboard('itemPct')").html(`ร้อยละ${iIcon}`);
+
+  $('#uc-dash-moph-tbody').closest('table').find('thead th:eq(0)')
+      .addClass('cursor-pointer hover:bg-blue-700 transition select-none').attr('onclick', "sortUCDashboard('name')").html(`แม่ข่าย${nIcon}`);
+  $('#uc-dash-moph-tbody').closest('table').find('thead th:last-child')
+      .addClass('cursor-pointer hover:bg-blue-700 transition select-none').attr('onclick', "sortUCDashboard('pct')").html(`ความก้าวหน้าการดำเนินงาน ${pIcon}`);
+
+  $('#uc-dash-pao-tbody').closest('table').find('thead th:eq(0)')
+      .addClass('cursor-pointer hover:bg-purple-700 transition select-none').attr('onclick', "sortUCDashboard('name')").html(`แม่ข่าย${nIcon}`);
+  $('#uc-dash-pao-tbody').closest('table').find('thead th:last-child')
+      .addClass('cursor-pointer hover:bg-purple-700 transition select-none').attr('onclick', "sortUCDashboard('pct')").html(`ความก้าวหน้าการดำเนินงาน ${pIcon}`);
+
+  if(typeof Chart !== 'undefined') {
+      try { Chart.register(ChartDataLabels); } catch(e){}
+
+      if(ucDoughnutChart) ucDoughnutChart.destroy();
+      ucDoughnutChart = new Chart(document.getElementById('ucDoughnutChart').getContext('2d'), { 
+        type: 'doughnut', 
+        data: { 
+          labels: ['0.ยังไม่ได้ดำเนินการ', '1.จัดทำแผนฯ', '2.ขออนุมัติฯ', '3.ทำสัญญาฯ', '4.ตรวจรับฯ', '5.เบิกจ่ายเงินแล้ว'], 
+          datasets: [{ 
+            data: [statusBudget['0'], statusBudget['1'], statusBudget['2'], statusBudget['3'], statusBudget['4'], statusBudget['5']], 
+            backgroundColor: ['#ef4444', '#fdba74', '#38bdf8', '#2563eb', '#34d399', '#15803d'] 
+          }] 
+        }, 
+        options: { 
+          responsive: true, maintainAspectRatio: false, 
+          plugins: { 
+            legend: { position: 'right', labels:{ font:{ size:10, family:'Prompt'} } },
+            title: { display: true, text: 'หน่วย: ล้านบาท (ลบ.)', font: { family: 'Prompt', size: 12, weight: 'normal' }, color: '#64748b' },
+            datalabels: {
+              color: '#fff', font: { family: 'Prompt', weight: 'bold', size: 10 },
+              formatter: (value, ctx) => value === 0 ? '' : (value / 1000000).toFixed(2) + ' ลบ.'
+            },
+            tooltip: { callbacks: { label: (context) => ' ' + (context.raw / 1000000).toFixed(2) + ' ล้านบาท' } }
+          } 
+        } 
+      });
+      
+      let sortedGroupedChart = Object.values(grouped).sort((a,b) => b.budget - a.budget); 
+      let labels = sortedGroupedChart.map(g => g.name); 
+      let s0 = sortedGroupedChart.map(g => g.s0); let s1 = sortedGroupedChart.map(g => g.s1); let s2 = sortedGroupedChart.map(g => g.s2);
+      let s3 = sortedGroupedChart.map(g => g.s3); let s4 = sortedGroupedChart.map(g => g.s4); let s5 = sortedGroupedChart.map(g => g.s5);
+      
+      let pctData = sortedGroupedChart.map(g => g.items > 0 ? ((g.s5 / g.items) * 100).toFixed(2) : 0);
+      let maxItems = Math.max(...s0, ...s1, ...s2, ...s3, ...s4, ...s5);
+
+      if(ucBarChart) ucBarChart.destroy();
+      ucBarChart = new Chart(document.getElementById('ucBarChart').getContext('2d'), { 
+        type: 'bar', 
+        data: { 
+          labels: labels, 
+          datasets: [
+            { 
+              label: '% เบิกจ่าย', data: pctData, type: 'line', yAxisID: 'y1', 
+              borderColor: '#475569', backgroundColor: '#475569', showLine: false, pointStyle: 'circle', pointRadius: 5, pointHoverRadius: 7,
+              datalabels: { align: 'top', anchor: 'end', color: '#1e293b', font: { family: 'Prompt', size: 9, weight: 'bold' }, formatter: (val) => val + '%' }
+            },
+            { label: '0-ยังไม่ดำเนินการ', data: s0, backgroundColor: '#ef4444', yAxisID: 'y' }, 
+            { label: '1-จัดทำแผนฯ', data: s1, backgroundColor: '#fdba74', yAxisID: 'y' },
+            { label: '2-ขออนุมัติฯ', data: s2, backgroundColor: '#38bdf8', yAxisID: 'y' },
+            { label: '3-ทำสัญญาฯ', data: s3, backgroundColor: '#2563eb', yAxisID: 'y' },
+            { label: '4-ตรวจรับฯ', data: s4, backgroundColor: '#34d399', yAxisID: 'y' },
+            { label: '5-เบิกจ่ายเงินแล้ว', data: s5, backgroundColor: '#15803d', yAxisID: 'y' }
+          ] 
+        }, 
+        options: { 
+          responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
+          plugins: {
+            legend: { position: 'top', labels: { font: { family: 'Prompt', size: 10 }, usePointStyle: true, boxWidth: 8 } },
+            datalabels: { display: function(context) { return context.dataset.type === 'line'; } },
+            tooltip: { callbacks: { label: function(context) { if (context.dataset.type === 'line') return ' ร้อยละเบิกจ่าย: ' + context.raw + '%'; return ' ' + context.dataset.label + ': ' + context.raw + ' รายการ'; } } }
+          },
+          scales: { 
+            x: { stacked: true, ticks: { font: { family: 'Prompt', size: 9 } } }, 
+            y: { type: 'linear', position: 'left', stacked: true, suggestedMax: maxItems * 1.2, title: { display: true, text: 'จำนวนรายการ', font: { family: 'Prompt', size: 10 } } },
+            y1: { type: 'linear', position: 'right', min: 0, max: 120, title: { display: true, text: 'ร้อยละเบิกจ่าย (%)', font: { family: 'Prompt', size: 10 } }, grid: { drawOnChartArea: false } }
+          } 
+        } 
+      });
+  }
+}
 
     // ========================================================
     // 🔥 UC REPORT & BATCH UPDATE LOGIC
@@ -1961,45 +2028,56 @@
     }
 
     let ucSelectedItems = [];
-    function openUCBatchEdit() {
-        ucSelectedItems = [];
-        $('.uc-chk:checked').each(function() {
-            let id = $(this).val();
-            let item = appData.uc.find(d => d.id === id);
-            if(item) ucSelectedItems.push(item);
-        });
+  // ==========================================
+  // ฟังก์ชันสำหรับเปิดฟอร์มแก้ไขข้อมูลแบบเหมาเข่ง
+  // ==========================================
+  function openUCBatchEdit() {
+      ucSelectedItems = [];
+      $('.uc-chk:checked').each(function() {
+          let id = $(this).val();
+          let item = appData.uc.find(d => d.id === id);
+          if(item) ucSelectedItems.push(item);
+      });
 
-        if(ucSelectedItems.length === 0) return;
+      if(ucSelectedItems.length === 0) return;
 
-        $('#ucBatchStatus').val('');
-        $('#uc-modal-count').text(ucSelectedItems.length);
-        
-        let html = '';
-        ucSelectedItems.forEach(d => {
-            let mName = (d.motherHosp && d.motherHosp !== '-') ? d.motherHosp : d.hospName;
-            let itemName = d.itemName !== '-' ? d.itemName : d.name;
-            let budget = Number(d.budgetUC || 0);
-            let spent = Number(d.spentUC || 0);
-            
-            html += `<tr class="border-b" id="uc-row-${d.id}">
-                <td class="p-2 text-sm">
-                    <div class="font-bold text-[#007B5E] truncate max-w-[200px] md:max-w-xs" title="${itemName}">${itemName}</div>
-                    <div class="text-[10px] text-gray-500">${mName}</div>
-                </td>
-                <td class="p-2 text-right font-bold text-gray-700">${budget.toLocaleString(undefined, {minimumFractionDigits:2})}</td>
-                <td class="p-2 text-center uc-spent-col hidden bg-blue-50">
-                    <input type="text" id="uc-spent-${d.id}" class="w-full text-right p-1.5 border border-blue-300 rounded font-bold text-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm" 
-                           value="${spent.toLocaleString(undefined, {minimumFractionDigits:2})}"
-                           data-budget="${budget}" 
-                           onkeyup="calcUCRemaining('${d.id}')" onblur="formatUCMoney(this, '${d.id}')">
-                </td>
-                <td class="p-2 text-right uc-spent-col hidden bg-red-50 font-bold" id="uc-rem-${d.id}">0.00</td>
-            </tr>`;
-        });
-        $('#uc-modal-tbody').html(html);
-        handleUCBatchStatusChange();
-        $('#ucBatchModal').fadeIn(200);
-    }
+      $('#ucBatchStatus').val('');
+      $('#uc-modal-count').text(ucSelectedItems.length);
+      
+      let html = '';
+      ucSelectedItems.forEach(d => {
+          let mName = (d.motherHosp && d.motherHosp !== '-') ? d.motherHosp : d.hospName;
+          let cName = d.hospName; // ดึงชื่อลูกข่าย
+          let itemName = d.itemName !== '-' ? d.itemName : d.name;
+          let budget = Number(d.budgetUC || 0);
+          let spent = Number(d.spentUC || 0);
+          
+          // 💡 เช็กว่าถ้าเบิกจ่ายเป็น 0 ให้ว่างไว้ เพื่อโชว์ placeholder
+          let spentValue = spent === 0 ? '' : spent.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2});
+          
+          // 💡 ลบ truncate/max-w ทิ้ง เพื่อแสดงชื่อรายการแบบเต็ม และปรับ UI ฝั่งโรงพยาบาล
+          html += `<tr class="border-b" id="uc-row-${d.id}">
+              <td class="p-2 text-sm">
+                  <div class="font-bold text-[#007B5E] pb-1">${itemName}</div>
+                  <div class="text-xs text-gray-700 bg-gray-50 p-1.5 rounded border border-gray-100 mt-1">
+                    <span class="font-bold">แม่ข่าย:</span> ${mName} <br>
+                    <span class="font-bold text-blue-600">ลูกข่าย:</span> <span class="text-blue-600">${cName}</span>
+                  </div>
+              </td>
+              <td class="p-2 text-right font-bold text-gray-700 align-top pt-3">${budget.toLocaleString(undefined, {minimumFractionDigits:2})}</td>
+              <td class="p-2 text-center uc-spent-col hidden bg-blue-50 align-top pt-2">
+                  <input type="text" id="uc-spent-${d.id}" class="w-full text-right p-1.5 border border-blue-300 rounded font-bold text-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm" 
+                        value="${spentValue}" placeholder="0.00"
+                        data-budget="${budget}" 
+                        onkeyup="calcUCRemaining('${d.id}')" onblur="formatUCMoney(this, '${d.id}')">
+              </td>
+              <td class="p-2 text-right uc-spent-col hidden bg-red-50 font-bold align-top pt-3" id="uc-rem-${d.id}">0.00</td>
+          </tr>`;
+      });
+      $('#uc-modal-tbody').html(html);
+      handleUCBatchStatusChange();
+      $('#ucBatchModal').fadeIn(200);
+  }
 
     function closeUCBatchModal() { $('#ucBatchModal').fadeOut(200); }
 
@@ -2037,6 +2115,9 @@
         }
     }
 
+    // ==========================================
+    // ฟังก์ชันสำหรับบันทึกการแก้ไขข้อมูลแบบกลุ่ม (พร้อมแก้บั๊ก Modal Z-index)
+    // ==========================================
     function saveUCBatchEdit() {
         let st = $('#ucBatchStatus').val();
         if(!st) { Swal.fire('แจ้งเตือน', 'กรุณาเลือกสถานะการดำเนินงานใหม่', 'warning'); return; }
@@ -2061,12 +2142,14 @@
 
         if(hasError) { Swal.fire('ข้อมูลไม่ถูกต้อง', 'มียอดเบิกจ่ายเกินวงเงินงบประมาณ กรุณาตรวจสอบช่องที่ไฮไลต์สีแดง', 'error'); return; }
 
+        // 💡 ปิด Modal ฟอร์มให้มุดลงไปก่อน เพื่อให้ SweetAlert สถานะโหลดเด้งขึ้นมาตรงกลางจอสวยๆ
+        closeUCBatchModal();
+
         Swal.fire({ title: 'กำลังบันทึกข้อมูล...', html: `อัปเดต ${payload.items.length} รายการ`, didOpen: () => Swal.showLoading() });
 
         google.script.run.withSuccessHandler(res => {
             if(res && res.success) {
                 Swal.fire('สำเร็จ', `อัปเดตสถานะสำเร็จ ${res.count} รายการ`, 'success');
-                closeUCBatchModal();
                 
                 google.script.run.withSuccessHandler(r => {
                     if(r && r.success) {
